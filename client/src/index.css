@@ -136,10 +136,14 @@
   .reading-panel::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 7px; background: #f06f37; z-index: 1; }
   .reading-ruler { z-index: 2; border-right: 1px solid rgba(255, 255, 255, 0.16); background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 20px, rgba(240, 111, 55, 0.82) 20px, rgba(240, 111, 55, 0.82) 21px, transparent 21px, transparent 40px); opacity: 0.72; }
   .reading-ruler::after { content: ""; position: absolute; right: -1px; top: 0; height: 41px; width: 58%; border-top: 1px solid #f06f37; }
+  .wordmark { position: relative; padding-left: 0.25rem; }
+  .wordmark::before { content: ""; position: absolute; left: 0; top: 0.15rem; bottom: 0.1rem; width: 2px; background: #f06f37; }
   .instrument-card { position: relative; isolation: isolate; }
   .instrument-card::before { content: ""; position: absolute; z-index: -1; right: 0; top: 0; height: 5px; width: 42px; background: #f06f37; }
   .instrument-card::after { content: ""; pointer-events: none; position: absolute; z-index: -1; right: -13px; top: 12px; height: 32px; width: 108px; opacity: 0.35; background-image: repeating-linear-gradient(to right, rgba(16, 43, 64, 0.75) 0, rgba(16, 43, 64, 0.75) 1px, transparent 1px, transparent 12px); }
   .metric-rows > div:not(:last-child) { border-bottom: 1px solid rgba(16, 43, 64, 0.12); }
+  .forecast-grid { background-image: linear-gradient(90deg, rgba(240, 111, 55, 0.06) 1px, transparent 1px), linear-gradient(rgba(16, 43, 64, 0.035) 1px, transparent 1px); background-size: 26px 26px; }
+  .forecast-grid > div::after { content: ""; position: absolute; bottom: 0; left: 1rem; right: 1rem; height: 3px; background: linear-gradient(90deg, #f06f37 0 14%, rgba(16, 43, 64, 0.15) 14% 100%); opacity: 0.64; }
   .weather-symbol { font-family: Georgia, serif; }
 }
 

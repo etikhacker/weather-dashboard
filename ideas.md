@@ -92,3 +92,5 @@ Loqo sözsüz, içində üç konsentrik barometr qövsü və şimal istiqamətin
 ## Style Decisions
 
 İlk ekranın əsas vizualı həmişə soldakı böyük DM Serif temperatur oxunuşudur; tünd səth yalnız ölçü üçün fon rolunu oynayır. `#F06F37` temperatur, aktiv axtarış və kritik ölçü nişanları üçün ayrılır. Hər əsas məlumat modulu koordinat toru, cihaz cizgisi, kompas/barometr qövsü və ya ölçü bölücüsü kimi ən azı bir meteoroloji alət işarəsi daşıyır.
+
+Yükləmə vəziyyəti boş alət paneli kimi görünmür: temperatur oxu sahəsi, 15 dəqiqəlik model nişanı və mənbə statusu əsas vizual iyerarxiyanı nəticə gələnədək saxlayır.
