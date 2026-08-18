@@ -12,6 +12,7 @@ import {
   Droplets,
   Gauge,
   LoaderCircle,
+  LocateFixed,
   MapPin,
   RefreshCw,
   Search,
@@ -58,11 +59,18 @@ type WeatherData = {
   timezone: string;
 };
 
+type ActiveSource =
+  | { kind: "city"; value: string }
+  | { kind: "location"; latitude: number; longitude: number };
+
 const translations = {
   az: {
     searchLabel: "Şəhər adı",
     searchPlaceholder: "Şəhər axtarın...",
     search: "Axtar",
+    useLocation: "Konumum",
+    findingLocation: "Konum alınır",
+    yourLocation: "Sizin konumunuz",
     quickSelect: "Sürətli seçim:",
     currentReading: "Cari oxunuş",
     feelsLike: "Hiss edilən",
@@ -91,6 +99,9 @@ const translations = {
     errorNotFound: "Bu şəhər tapılmadı. Şəhər adını yenidən yoxlayın.",
     errorService: "Hava xidməti hazırda cavab vermir. Bir neçə saniyə sonra yenidən cəhd edin.",
     errorNetwork: "Şəbəkə bağlantısı alınmadı. İnternetinizi yoxlayıb yenidən cəhd edin.",
+    errorLocationUnsupported: "Bu brauzer konum məlumatını dəstəkləmir.",
+    errorLocationDenied: "Konum icazəsi verilmədi. Brauzer ayarlarından icazə verin.",
+    errorLocationUnavailable: "Konum müəyyən edilə bilmədi. Bir neçə saniyə sonra yenidən cəhd edin.",
     logoAlt: "Weather Dashboard kompas-barometr nişanı",
     quickCityLabel: ["Bakı", "Mingəçevir", "Gəncə", "Göyçay", "İstanbul"],
   },
@@ -98,6 +109,9 @@ const translations = {
     searchLabel: "City name",
     searchPlaceholder: "Search a city...",
     search: "Search",
+    useLocation: "My location",
+    findingLocation: "Finding location",
+    yourLocation: "Your location",
     quickSelect: "Quick select:",
     currentReading: "Current reading",
     feelsLike: "Feels like",
@@ -126,6 +140,9 @@ const translations = {
     errorNotFound: "This city was not found. Check the city name and try again.",
     errorService: "The weather service is not responding right now. Try again in a few seconds.",
     errorNetwork: "Network connection failed. Check your internet connection and try again.",
+    errorLocationUnsupported: "This browser does not support location services.",
+    errorLocationDenied: "Location permission was not granted. Allow it in your browser settings.",
+    errorLocationUnavailable: "Your location could not be determined. Try again in a few seconds.",
     logoAlt: "Weather Dashboard compass-barometer symbol",
     quickCityLabel: ["Baku", "Mingachevir", "Ganja", "Goychay", "Istanbul"],
   },
@@ -181,15 +198,7 @@ function windDirection(degrees: number, language: Language) {
   return windDirections[language][Math.round(degrees / 22.5) % 16];
 }
 
-async function fetchWeatherForCity(city: string, language: Language): Promise<WeatherData> {
-  const locationParams = new URLSearchParams({ name: normalizeCityQuery(city), count: "1", language, format: "json" });
-  const locationResponse = await fetch(`https://geocoding-api.open-meteo.com/v1/search?${locationParams.toString()}`);
-  if (!locationResponse.ok) throw new Error("LOCATION_REQUEST_FAILED");
-
-  const locationPayload = (await locationResponse.json()) as { results?: Place[] };
-  const place = locationPayload.results?.[0];
-  if (!place) throw new Error("CITY_NOT_FOUND");
-
+async function fetchWeatherForCoordinates(place: Place): Promise<WeatherData> {
   const weatherParams = new URLSearchParams({
     latitude: String(place.latitude),
     longitude: String(place.longitude),
@@ -215,6 +224,17 @@ async function fetchWeatherForCity(city: string, language: Language): Promise<We
   };
 }
 
+async function fetchWeatherForCity(city: string, language: Language): Promise<WeatherData> {
+  const locationParams = new URLSearchParams({ name: normalizeCityQuery(city), count: "1", language, format: "json" });
+  const locationResponse = await fetch(`https://geocoding-api.open-meteo.com/v1/search?${locationParams.toString()}`);
+  if (!locationResponse.ok) throw new Error("LOCATION_REQUEST_FAILED");
+
+  const locationPayload = (await locationResponse.json()) as { results?: Place[] };
+  const place = locationPayload.results?.[0];
+  if (!place) throw new Error("CITY_NOT_FOUND");
+  return fetchWeatherForCoordinates(place);
+}
+
 function readableError(error: unknown, language: Language) {
   const t = translations[language];
   if (error instanceof Error) {
@@ -227,9 +247,10 @@ function readableError(error: unknown, language: Language) {
 export default function Home() {
   const [language, setLanguage] = useState<Language>(() => (typeof window !== "undefined" && localStorage.getItem("weather-dashboard-language") === "en" ? "en" : "az"));
   const [query, setQuery] = useState("Bakı");
-  const [activeCity, setActiveCity] = useState("Bakı");
+  const [activeSource, setActiveSource] = useState<ActiveSource>({ kind: "city", value: "Bakı" });
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLocating, setIsLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const t = translations[language];
@@ -242,7 +263,7 @@ export default function Home() {
     try {
       const data = await fetchWeatherForCity(normalizedCity, language);
       setWeather(data);
-      setActiveCity(data.place.name);
+      setActiveSource({ kind: "city", value: data.place.name });
       setQuery(data.place.name);
       setLastUpdated(new Date());
     } catch (requestError) {
@@ -252,11 +273,59 @@ export default function Home() {
     }
   }, [language]);
 
-  useEffect(() => { void loadWeather(activeCity); }, [language]);
+  const loadWeatherForCoordinates = useCallback(async (latitude: number, longitude: number) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const locationPlace: Place = {
+        id: -1,
+        name: translations[language].yourLocation,
+        admin1: `${latitude.toFixed(4)}°, ${longitude.toFixed(4)}°`,
+        latitude,
+        longitude,
+      };
+      const data = await fetchWeatherForCoordinates(locationPlace);
+      setWeather(data);
+      setActiveSource({ kind: "location", latitude, longitude });
+      setQuery(locationPlace.name);
+      setLastUpdated(new Date());
+    } catch (requestError) {
+      setError(readableError(requestError, language));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [language]);
+
+  useEffect(() => {
+    if (activeSource.kind === "location") {
+      void loadWeatherForCoordinates(activeSource.latitude, activeSource.longitude);
+    } else {
+      void loadWeather(activeSource.value);
+    }
+  }, [language]);
   useEffect(() => { localStorage.setItem("weather-dashboard-language", language); }, [language]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); void loadWeather(query); }
   function changeLanguage(nextLanguage: Language) { if (nextLanguage !== language) setLanguage(nextLanguage); }
+  function useCurrentLocation() {
+    if (!("geolocation" in navigator)) {
+      setError(t.errorLocationUnsupported);
+      return;
+    }
+    setIsLocating(true);
+    setError(null);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setIsLocating(false);
+        void loadWeatherForCoordinates(position.coords.latitude, position.coords.longitude);
+      },
+      (locationError) => {
+        setIsLocating(false);
+        setError(locationError.code === locationError.PERMISSION_DENIED ? t.errorLocationDenied : t.errorLocationUnavailable);
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
+    );
+  }
 
   const conditions = weatherCodes[language];
   const condition = weather ? conditions[weather.current.weather_code] ?? conditions[0] : conditions[0];
@@ -277,11 +346,14 @@ export default function Home() {
           <div className="flex w-full max-w-2xl flex-col gap-3 sm:flex-row sm:items-stretch sm:justify-end">
             <div className="flex w-fit self-end border border-[#102B40]/15 bg-[#F7FBFC] p-1 sm:self-auto" role="group" aria-label="Language selection">
               {(["az", "en"] as Language[]).map((item) => (
-                <button key={item} type="button" onClick={() => changeLanguage(item)} aria-pressed={language === item} className={`px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.15em] transition-colors ${language === item ? "bg-[#102B40] text-white" : "text-[#557083] hover:text-[#102B40]"}`}>
+                <button key={item} type="button" onClick={() => changeLanguage(item)} disabled={isLoading || isLocating} aria-pressed={language === item} className={`px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.15em] transition-colors disabled:cursor-wait disabled:opacity-60 ${language === item ? "bg-[#102B40] text-white" : "text-[#557083] hover:text-[#102B40]"}`}>
                   {item.toUpperCase()}
                 </button>
               ))}
             </div>
+            <button type="button" onClick={useCurrentLocation} disabled={isLoading || isLocating} className="location-control flex h-14 items-center justify-center gap-2 border border-[#102B40]/15 bg-[#F7FBFC] px-4 text-[10px] font-extrabold uppercase tracking-[0.13em] text-[#102B40] transition-colors hover:border-[#F06F37] hover:text-[#F06F37] active:scale-[0.97] disabled:cursor-wait disabled:opacity-60" title={t.useLocation}>
+              {isLocating ? <LoaderCircle className="h-4 w-4 animate-spin text-[#F06F37]" /> : <LocateFixed className="h-4 w-4 text-[#F06F37]" />}<span>{isLocating ? t.findingLocation : t.useLocation}</span>
+            </button>
             <form onSubmit={handleSubmit} className="search-control flex flex-1 items-stretch" role="search">
               <label htmlFor="city-search" className="sr-only">{t.searchLabel}</label>
               <div className="flex min-w-0 flex-1 items-center gap-3"><Search aria-hidden="true" className="ml-4 h-5 w-5 shrink-0 text-[#557083]" /><input id="city-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t.searchPlaceholder} disabled={isLoading} autoComplete="off" className="h-14 min-w-0 flex-1 bg-transparent text-base font-semibold outline-none placeholder:text-[#738A98] disabled:cursor-wait" /></div>
